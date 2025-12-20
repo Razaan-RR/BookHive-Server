@@ -1,102 +1,3 @@
-// require('dotenv').config()
-// const express = require('express')
-// const cors = require('cors')
-// const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb')
-// const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
-// const admin = require('firebase-admin')
-
-// const app = express()
-// const port = process.env.PORT || 3000
-
-// const decoded = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString(
-//   'utf-8'
-// )
-// const serviceAccount = JSON.parse(decoded)
-
-// admin.initializeApp({
-//   credential: admin.credential.cert(serviceAccount),
-// })
-
-// app.use(cors())
-// app.use(express.json())
-
-// const client = new MongoClient(process.env.MONGODB_URI, {
-//   serverApi: {
-//     version: ServerApiVersion.v1,
-//     strict: true,
-//     deprecationErrors: true,
-//   },
-// })
-
-// async function run() {
-//   try {
-//     await client.connect()
-//     console.log('MongoDB connected')
-//     const db = client.db('booksDB')
-//     const booksCollection = db.collection('books')
-//     const ordersCollection = db.collection('orders')
-
-//     app.post('/books', async (req, res) => {
-//       const bookData = req.body
-//       console.log(bookData)
-//       const result = await booksCollection.insertOne(bookData)
-//       res.send(result)
-//     })
-
-//     app.get('/books', async (req, res) => {
-//       const result = await booksCollection.find().toArray()
-//       res.send(result)
-//     })
-
-//     app.get('/book/:id', async (req, res) => {
-//       const id = req.params.id
-//       const result = await booksCollection.findOne({ _id: new ObjectId(id) })
-//       res.send(result)
-//     })
-
-//     app.post('/create-book-checkout-session', async (req, res) => {
-//       const paymentInfo = req.body
-//       const session = await stripe.checkout.sessions.create({
-//         line_items: [
-//           {
-//             price_data: {
-//               currency: 'bdt',
-//               product_data: {
-//                 name: paymentInfo?.name,
-//                 description: paymentInfo?.description,
-//                 images: [paymentInfo.image],
-//               },
-//               unit_amount: paymentInfo?.price * 100,
-//             },
-//             quantity: 1,
-//           },
-//         ],
-//         customer_email: paymentInfo?.customer?.email,
-//         mode: 'payment',
-//         metadata: {
-//           bookId: paymentInfo?.bookId,
-//           customer: paymentInfo?.customer?.email,
-//         },
-//         success_url: `${process.env.CLIENT_DOMAIN}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-//         cancel_url: `${process.env.CLIENT_DOMAIN}/book/${paymentInfo?.bookId}`,
-//       })
-//       res.send({ url: session.url })
-//     })
-
-//   } catch (err) {
-//     console.error(err)
-//   }
-// }
-// run()
-
-// app.get('/', (req, res) => {
-//   res.send('Hello from BookHive Server')
-// })
-
-// app.listen(port, () => {
-//   console.log(`Server running on port ${port}`)
-// })
-
 require('dotenv').config()
 const express = require('express')
 const cors = require('cors')
@@ -141,7 +42,6 @@ async function run() {
     const ordersCollection = db.collection('orders')
     const usersCollection = db.collection('users')
 
-    // role middlewares (NO JWT)
     const verifyADMIN = async (req, res, next) => {
       const { email } = req.body
       const user = await usersCollection.findOne({ email })
@@ -159,12 +59,26 @@ async function run() {
     }
 
     app.post('/books', verifyLIBRARIAN, async (req, res) => {
-      const result = await booksCollection.insertOne(req.body)
+      const book = req.body
+      book.createdAt = new Date()
+      const result = await booksCollection.insertOne(book)
       res.send(result)
     })
 
     app.get('/books', async (req, res) => {
       const result = await booksCollection.find().toArray()
+      res.send(result)
+    })
+
+    app.get('/books/latest', async (req, res) => {
+      const limit = Number(req.query.limit) || 6
+
+      const result = await booksCollection
+        .find()
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .toArray()
+
       res.send(result)
     })
 
