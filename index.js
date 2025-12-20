@@ -217,7 +217,7 @@ async function run() {
 
       const result = await usersCollection.updateOne(
         { email },
-        { $addToSet: { wishlist: book } } 
+        { $addToSet: { wishlist: book } }
       )
       res.send(result)
     })
@@ -229,7 +229,7 @@ async function run() {
 
       const result = await usersCollection.updateOne(
         { email },
-        { $pull: { wishlist: { _id: new ObjectId(bookId) } } } 
+        { $pull: { wishlist: { _id: new ObjectId(bookId) } } }
       )
       res.send(result)
     })
@@ -277,6 +277,20 @@ async function run() {
         .sort({ createdAt: -1 })
         .toArray()
       res.send(reviews)
+    })
+
+    app.get('/invoices/:email', async (req, res) => {
+      const email = req.params.email
+
+      const invoices = await ordersCollection
+        .find({
+          customer: email,
+          paymentStatus: 'paid',
+        })
+        .sort({ orderDate: -1 })
+        .toArray()
+
+      res.send(invoices)
     })
 
     await client.db('admin').command({ ping: 1 })
