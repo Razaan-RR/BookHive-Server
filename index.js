@@ -206,6 +206,42 @@ async function run() {
       res.send(result)
     })
 
+    // Add a book to user's wishlist
+    app.post('/wishlist/add', async (req, res) => {
+      const { email, bookId } = req.body
+      if (!email || !bookId)
+        return res.status(400).send({ message: 'Missing email or bookId' })
+
+      const book = await booksCollection.findOne({ _id: new ObjectId(bookId) })
+      if (!book) return res.status(404).send({ message: 'Book not found' })
+
+      // Add to user's wishlist if not already present
+      const result = await usersCollection.updateOne(
+        { email },
+        { $addToSet: { wishlist: book } } // $addToSet avoids duplicates
+      )
+      res.send(result)
+    })
+
+    // Remove a book from user's wishlist
+    app.post('/wishlist/remove', async (req, res) => {
+      const { email, bookId } = req.body
+      if (!email || !bookId)
+        return res.status(400).send({ message: 'Missing email or bookId' })
+
+      const result = await usersCollection.updateOne(
+        { email },
+        { $pull: { wishlist: { _id: new ObjectId(bookId) } } } // remove from wishlist
+      )
+      res.send(result)
+    })
+
+    // Get user's wishlist
+    app.get('/wishlist/:email', async (req, res) => {
+      const user = await usersCollection.findOne({ email: req.params.email })
+      res.send(user?.wishlist || [])
+    })
+
     await client.db('admin').command({ ping: 1 })
     console.log('MongoDB connected')
   } finally {
