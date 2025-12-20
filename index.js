@@ -41,6 +41,7 @@ async function run() {
     const booksCollection = db.collection('books')
     const ordersCollection = db.collection('orders')
     const usersCollection = db.collection('users')
+    const reviewsCollection = db.collection('reviews')
 
     const verifyADMIN = async (req, res, next) => {
       const { email } = req.body
@@ -206,7 +207,6 @@ async function run() {
       res.send(result)
     })
 
-    // Add a book to user's wishlist
     app.post('/wishlist/add', async (req, res) => {
       const { email, bookId } = req.body
       if (!email || !bookId)
@@ -215,15 +215,13 @@ async function run() {
       const book = await booksCollection.findOne({ _id: new ObjectId(bookId) })
       if (!book) return res.status(404).send({ message: 'Book not found' })
 
-      // Add to user's wishlist if not already present
       const result = await usersCollection.updateOne(
         { email },
-        { $addToSet: { wishlist: book } } // $addToSet avoids duplicates
+        { $addToSet: { wishlist: book } } 
       )
       res.send(result)
     })
 
-    // Remove a book from user's wishlist
     app.post('/wishlist/remove', async (req, res) => {
       const { email, bookId } = req.body
       if (!email || !bookId)
@@ -231,15 +229,54 @@ async function run() {
 
       const result = await usersCollection.updateOne(
         { email },
-        { $pull: { wishlist: { _id: new ObjectId(bookId) } } } // remove from wishlist
+        { $pull: { wishlist: { _id: new ObjectId(bookId) } } } 
       )
       res.send(result)
     })
 
-    // Get user's wishlist
     app.get('/wishlist/:email', async (req, res) => {
       const user = await usersCollection.findOne({ email: req.params.email })
       res.send(user?.wishlist || [])
+    })
+
+    app.post('/review', async (req, res) => {
+      const { email, bookId, rating, review } = req.body
+
+      if (!email || !bookId || !rating || !review) {
+        return res.status(400).send({ message: 'Missing required fields' })
+      }
+
+      const order = await ordersCollection.findOne({
+        bookId,
+        customer: email,
+        paymentStatus: 'paid',
+      })
+
+      if (!order) {
+        return res
+          .status(403)
+          .send({ message: 'You can only review books you have ordered' })
+      }
+
+      const newReview = {
+        bookId,
+        user: email,
+        rating,
+        review,
+        createdAt: new Date(),
+      }
+
+      const result = await reviewsCollection.insertOne(newReview)
+      res.send({ success: true, reviewId: result.insertedId })
+    })
+
+    app.get('/reviews/:bookId', async (req, res) => {
+      const bookId = req.params.bookId
+      const reviews = await reviewsCollection
+        .find({ bookId })
+        .sort({ createdAt: -1 })
+        .toArray()
+      res.send(reviews)
     })
 
     await client.db('admin').command({ ping: 1 })
