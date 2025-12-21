@@ -131,6 +131,71 @@ async function run() {
       )
     })
 
+    app.get('/librarian/orders', async (req, res) => {
+      const orders = await ordersCollection
+        .find()
+        .sort({ orderDate: -1 })
+        .toArray()
+
+      res.send(orders)
+    })
+
+    // Update order status
+    app.patch('/orders/status/:id', async (req, res) => {
+      const { id } = req.params
+      const { status } = req.body
+
+      if (!status)
+        return res.status(400).send({ message: 'Status is required' })
+
+      try {
+        const result = await ordersCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { status } }
+        )
+
+        if (result.modifiedCount === 0) {
+          return res
+            .status(404)
+            .send({ message: 'Order not found or already has this status' })
+        }
+
+        res.send({ success: true, status })
+      } catch (err) {
+        console.error(err)
+        res.status(500).send({ message: 'Failed to update status' })
+      }
+    })
+
+    // GET /librarian/orders
+    app.get('/librarian/orders', verifyLIBRARIAN, async (req, res) => {
+      try {
+        const orders = await ordersCollection
+          .find()
+          .sort({ orderDate: -1 })
+          .toArray()
+        res.send(orders)
+      } catch (err) {
+        console.error(err)
+        res.status(500).send({ message: 'Failed to fetch orders' })
+      }
+    })
+
+    // GET /my-orders/:email
+    app.get('/my-orders/:email', async (req, res) => {
+      try {
+        const email = req.params.email
+        const orders = await ordersCollection
+          .find({ customer: email })
+          .sort({ orderDate: -1 })
+          .toArray()
+        res.send(orders)
+      } catch (err) {
+        console.error(err)
+        res.status(500).send({ message: 'Failed to fetch your orders' })
+      }
+    })
+
     app.post('/create-book-checkout-session', async (req, res) => {
       const paymentInfo = req.body
 
