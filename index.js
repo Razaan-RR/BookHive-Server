@@ -67,27 +67,69 @@ async function run() {
     })
 
     app.get('/books', async (req, res) => {
-      const result = await booksCollection.find().toArray()
-      res.send(result)
+      res.send(await booksCollection.find().toArray())
     })
 
     app.get('/books/latest', async (req, res) => {
       const limit = Number(req.query.limit) || 6
-
-      const result = await booksCollection
-        .find()
-        .sort({ createdAt: -1 })
-        .limit(limit)
-        .toArray()
-
-      res.send(result)
+      res.send(
+        await booksCollection
+          .find()
+          .sort({ createdAt: -1 })
+          .limit(limit)
+          .toArray()
+      )
     })
 
     app.get('/book/:id', async (req, res) => {
-      const result = await booksCollection.findOne({
-        _id: new ObjectId(req.params.id),
-      })
-      res.send(result)
+      res.send(
+        await booksCollection.findOne({ _id: new ObjectId(req.params.id) })
+      )
+    })
+
+
+    app.post('/orders', async (req, res) => {
+      const { customer, bookId, name, price, customerInfo } = req.body
+
+      if (!customer || !bookId || !name || !price) {
+        return res.status(400).send({ message: 'Missing required fields' })
+      }
+
+      const order = {
+        bookId,
+        name,
+        price,
+        customer, 
+        customerInfo, 
+        status: 'pending',
+        paymentStatus: 'unpaid',
+        orderDate: new Date().toISOString(),
+      }
+
+      const result = await ordersCollection.insertOne(order)
+      res.send({ ...order, _id: result.insertedId })
+    })
+
+    app.patch('/orders/cancel/:id', async (req, res) => {
+      const { id } = req.params
+      const result = await ordersCollection.updateOne(
+        { _id: new ObjectId(id), status: 'pending' },
+        { $set: { status: 'cancelled' } }
+      )
+
+      if (result.modifiedCount === 0) {
+        return res
+          .status(400)
+          .send({ message: 'Order not found or already processed' })
+      }
+
+      res.send({ success: true })
+    })
+
+    app.get('/my-orders/:email', async (req, res) => {
+      res.send(
+        await ordersCollection.find({ customer: req.params.email }).toArray()
+      )
     })
 
     app.post('/create-book-checkout-session', async (req, res) => {
@@ -111,11 +153,10 @@ async function run() {
         customer_email: paymentInfo.customer.email,
         mode: 'payment',
         metadata: {
-          bookId: paymentInfo.bookId,
-          customer: paymentInfo.customer.email,
+          orderId: paymentInfo.orderId,
         },
         success_url: `${process.env.CLIENT_DOMAIN}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${process.env.CLIENT_DOMAIN}/book/${paymentInfo.bookId}`,
+        cancel_url: `${process.env.CLIENT_DOMAIN}/dashboard/my-orders`,
       })
 
       res.send({ url: session.url })
@@ -125,113 +166,81 @@ async function run() {
       const { sessionId } = req.body
       const session = await stripe.checkout.sessions.retrieve(sessionId)
 
-      const book = await booksCollection.findOne({
-        _id: new ObjectId(session.metadata.bookId),
-      })
+      if (session.status === 'complete') {
+        await ordersCollection.updateOne(
+          { _id: new ObjectId(session.metadata.orderId) },
+          { $set: { paymentStatus: 'paid' } }
+        )
 
-      const existingOrder = await ordersCollection.findOne({
-        transactionId: session.payment_intent,
-      })
-
-      if (session.status === 'complete' && book && !existingOrder) {
-        const orderInfo = {
-          bookId: session.metadata.bookId,
-          transactionId: session.payment_intent,
-          customer: session.metadata.customer,
-          status: 'pending',
-          paymentStatus: 'paid',
-          name: book.name,
-          price: session.amount_total / 100,
-          image: book.image,
-          orderDate: new Date().toISOString(),
-        }
-
-        const result = await ordersCollection.insertOne(orderInfo)
-
-        return res.send({
-          transactionId: session.payment_intent,
-          orderId: result.insertedId,
-        })
+        return res.send({ success: true })
       }
 
-      res.send(existingOrder)
+      res.send({ success: false })
     })
 
-    app.get('/my-orders/:email', async (req, res) => {
-      const result = await ordersCollection
-        .find({ customer: req.params.email })
+    app.get('/invoices/:email', async (req, res) => {
+      const email = req.params.email
+      const invoices = await ordersCollection
+        .find({ customer: email, paymentStatus: 'paid' })
         .toArray()
-      res.send(result)
+      res.send(invoices)
     })
 
     app.post('/user', async (req, res) => {
-      const userData = req.body
-      userData.created_at = new Date().toISOString()
-      userData.last_loggedIn = new Date().toISOString()
-      userData.role = 'user'
-
-      const exists = await usersCollection.findOne({
-        email: userData.email,
-      })
-
-      if (exists) {
-        const result = await usersCollection.updateOne(
-          { email: userData.email },
-          { $set: { last_loggedIn: new Date().toISOString() } }
-        )
-        return res.send(result)
+      const userData = {
+        ...req.body,
+        created_at: new Date().toISOString(),
+        last_loggedIn: new Date().toISOString(),
+        role: 'user',
       }
 
-      const result = await usersCollection.insertOne(userData)
-      res.send(result)
+      const exists = await usersCollection.findOne({ email: userData.email })
+
+      if (exists) {
+        return res.send(
+          await usersCollection.updateOne(
+            { email: userData.email },
+            { $set: { last_loggedIn: new Date().toISOString() } }
+          )
+        )
+      }
+
+      res.send(await usersCollection.insertOne(userData))
     })
 
     app.get('/user/role/:email', async (req, res) => {
-      const user = await usersCollection.findOne({
-        email: req.params.email,
-      })
+      const user = await usersCollection.findOne({ email: req.params.email })
       res.send({ role: user?.role })
     })
 
     app.get('/users', async (req, res) => {
-      const result = await usersCollection.find().toArray()
-      res.send(result)
+      res.send(await usersCollection.find().toArray())
     })
 
     app.patch('/update-role', verifyADMIN, async (req, res) => {
       const { email, role } = req.body
-      const result = await usersCollection.updateOne(
-        { email },
-        { $set: { role } }
-      )
-      res.send(result)
+      res.send(await usersCollection.updateOne({ email }, { $set: { role } }))
     })
 
     app.post('/wishlist/add', async (req, res) => {
       const { email, bookId } = req.body
-      if (!email || !bookId)
-        return res.status(400).send({ message: 'Missing email or bookId' })
-
       const book = await booksCollection.findOne({ _id: new ObjectId(bookId) })
-      if (!book) return res.status(404).send({ message: 'Book not found' })
-
-      const result = await usersCollection.updateOne(
-        { email },
-        { $addToSet: { wishlist: book } }
+      res.send(
+        await usersCollection.updateOne(
+          { email },
+          { $addToSet: { wishlist: book } }
+        )
       )
-      res.send(result)
     })
 
     app.post('/wishlist/remove', async (req, res) => {
       const { email, bookId } = req.body
-      if (!email || !bookId)
-        return res.status(400).send({ message: 'Missing email or bookId' })
-
-      const result = await usersCollection.updateOne(
-        { email },
-        { $pull: { wishlist: { _id: new ObjectId(bookId) } } }
+      res.send(
+        await usersCollection.updateOne(
+          { email },
+          { $pull: { wishlist: { _id: new ObjectId(bookId) } } }
+        )
       )
-      res.send(result)
     })
 
     app.get('/wishlist/:email', async (req, res) => {
@@ -242,55 +251,32 @@ async function run() {
     app.post('/review', async (req, res) => {
       const { email, bookId, rating, review } = req.body
 
-      if (!email || !bookId || !rating || !review) {
-        return res.status(400).send({ message: 'Missing required fields' })
-      }
-
       const order = await ordersCollection.findOne({
         bookId,
         customer: email,
         paymentStatus: 'paid',
       })
 
-      if (!order) {
-        return res
-          .status(403)
-          .send({ message: 'You can only review books you have ordered' })
-      }
+      if (!order) return res.status(403).send({ message: 'Order required' })
 
-      const newReview = {
-        bookId,
-        user: email,
-        rating,
-        review,
-        createdAt: new Date(),
-      }
-
-      const result = await reviewsCollection.insertOne(newReview)
-      res.send({ success: true, reviewId: result.insertedId })
+      res.send(
+        await reviewsCollection.insertOne({
+          bookId,
+          user: email,
+          rating,
+          review,
+          createdAt: new Date(),
+        })
+      )
     })
 
     app.get('/reviews/:bookId', async (req, res) => {
-      const bookId = req.params.bookId
-      const reviews = await reviewsCollection
-        .find({ bookId })
-        .sort({ createdAt: -1 })
-        .toArray()
-      res.send(reviews)
-    })
-
-    app.get('/invoices/:email', async (req, res) => {
-      const email = req.params.email
-
-      const invoices = await ordersCollection
-        .find({
-          customer: email,
-          paymentStatus: 'paid',
-        })
-        .sort({ orderDate: -1 })
-        .toArray()
-
-      res.send(invoices)
+      res.send(
+        await reviewsCollection
+          .find({ bookId: req.params.bookId })
+          .sort({ createdAt: -1 })
+          .toArray()
+      )
     })
 
     await client.db('admin').command({ ping: 1 })
