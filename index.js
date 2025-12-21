@@ -44,8 +44,8 @@ async function run() {
     const reviewsCollection = db.collection('reviews')
 
     const verifyADMIN = async (req, res, next) => {
-      const { email } = req.body
-      const user = await usersCollection.findOne({ email })
+      const { adminEmail } = req.body
+      const user = await usersCollection.findOne({ email: adminEmail })
       if (user?.role !== 'admin')
         return res.status(403).send({ message: 'Admin only' })
       next()
@@ -140,7 +140,6 @@ async function run() {
       res.send(orders)
     })
 
-    // Update order status
     app.patch('/orders/status/:id', async (req, res) => {
       const { id } = req.params
       const { status } = req.body
@@ -167,7 +166,6 @@ async function run() {
       }
     })
 
-    // GET /librarian/orders
     app.get('/librarian/orders', verifyLIBRARIAN, async (req, res) => {
       try {
         const orders = await ordersCollection
@@ -181,7 +179,6 @@ async function run() {
       }
     })
 
-    // GET /my-orders/:email
     app.get('/my-orders/:email', async (req, res) => {
       try {
         const email = req.params.email
@@ -287,9 +284,39 @@ async function run() {
       res.send(await usersCollection.find().toArray())
     })
 
-    app.patch('/update-role', verifyADMIN, async (req, res) => {
-      const { email, role } = req.body
-      res.send(await usersCollection.updateOne({ email }, { $set: { role } }))
+    app.patch('/update-role', async (req, res) => {
+      try {
+        const { adminEmail, email, role } = req.body
+
+        if (!adminEmail || !email || !role) {
+          return res.status(400).send({ message: 'Missing required fields' })
+        }
+
+        const adminUser = await usersCollection.findOne({ email: adminEmail })
+        if (!adminUser) {
+          return res.status(403).send({ message: 'Admin not found' })
+        }
+
+        if (adminUser.role !== 'admin') {
+          return res.status(403).send({ message: 'Admin only' })
+        }
+
+        const result = await usersCollection.updateOne(
+          { email },
+          { $set: { role } }
+        )
+
+        if (result.modifiedCount === 0) {
+          return res
+            .status(404)
+            .send({ message: 'User not found or role unchanged' })
+        }
+
+        res.send({ success: true })
+      } catch (err) {
+        console.error(err)
+        res.status(500).send({ message: 'Failed to update role' })
+      }
     })
 
     app.post('/wishlist/add', async (req, res) => {
