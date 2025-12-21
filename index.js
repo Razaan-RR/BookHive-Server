@@ -87,7 +87,6 @@ async function run() {
       )
     })
 
-
     app.post('/orders', async (req, res) => {
       const { customer, bookId, name, price, customerInfo } = req.body
 
@@ -99,8 +98,8 @@ async function run() {
         bookId,
         name,
         price,
-        customer, 
-        customerInfo, 
+        customer,
+        customerInfo,
         status: 'pending',
         paymentStatus: 'unpaid',
         orderDate: new Date().toISOString(),
@@ -169,7 +168,13 @@ async function run() {
       if (session.status === 'complete') {
         await ordersCollection.updateOne(
           { _id: new ObjectId(session.metadata.orderId) },
-          { $set: { paymentStatus: 'paid' } }
+          {
+            $set: {
+              paymentStatus: 'paid',
+              transactionId: session.payment_intent,
+              paidAt: new Date().toISOString(),
+            },
+          }
         )
 
         return res.send({ success: true })
