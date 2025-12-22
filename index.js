@@ -503,7 +503,7 @@ const app = express()
 
 app.use(
   cors({
-    origin: [process.env.CLIENT_DOMAIN],
+    origin: [process.env.CLIENT_DOMAIN, "https://sage-bubblegum-e870ed.netlify.app"],
     credentials: true,
     optionSuccessStatus: 200,
   })
