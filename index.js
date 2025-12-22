@@ -322,25 +322,38 @@ async function run() {
     })
 
     app.post('/user', async (req, res) => {
-      const userData = {
-        ...req.body,
-        created_at: new Date().toISOString(),
-        last_loggedIn: new Date().toISOString(),
-        role: 'user',
-      }
+      const { email, name, uid, photoURL } = req.body
+      const now = new Date().toISOString()
 
-      const exists = await usersCollection.findOne({ email: userData.email })
+      const exists = await usersCollection.findOne({ email })
 
       if (exists) {
-        return res.send(
-          await usersCollection.updateOne(
-            { email: userData.email },
-            { $set: { last_loggedIn: new Date().toISOString() } }
-          )
+        const updatedData = {
+          last_loggedIn: now,
+          name: name || exists.name,
+          photoURL: photoURL || exists.photoURL,
+          uid: uid || exists.uid,
+        }
+
+        const result = await usersCollection.updateOne(
+          { email },
+          { $set: updatedData }
         )
+        return res.send(result)
       }
 
-      res.send(await usersCollection.insertOne(userData))
+      const newUser = {
+        email,
+        name,
+        uid,
+        photoURL,
+        role: 'user',
+        created_at: now,
+        last_loggedIn: now,
+      }
+
+      const result = await usersCollection.insertOne(newUser)
+      res.send(result)
     })
 
     app.get('/user/role/:email', async (req, res) => {
