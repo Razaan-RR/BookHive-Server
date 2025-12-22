@@ -70,6 +70,32 @@ async function run() {
       res.send(await booksCollection.find().toArray())
     })
 
+    app.delete('/books/:id', async (req, res) => {
+      try {
+        const { id } = req.params
+        const { adminEmail } = req.body
+
+        const adminUser = await usersCollection.findOne({ email: adminEmail })
+        if (adminUser?.role !== 'admin') {
+          return res.status(403).send({ message: 'Admin only' })
+        }
+
+        await ordersCollection.deleteMany({ bookId: id })
+        const result = await booksCollection.deleteOne({
+          _id: new ObjectId(id),
+        })
+
+        if (result.deletedCount === 0) {
+          return res.status(404).send({ message: 'Book not found' })
+        }
+
+        res.send({ success: true })
+      } catch (err) {
+        console.error(err)
+        res.status(500).send({ message: 'Failed to delete book' })
+      }
+    })
+
     app.get('/books/latest', async (req, res) => {
       const limit = Number(req.query.limit) || 6
       res.send(
