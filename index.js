@@ -35,6 +35,24 @@
 //   },
 // })
 
+// // --- NEW: Middleware to verify Firebase token ---
+// const verifyToken = async (req, res, next) => {
+//   try {
+//     const authHeader = req.headers.authorization
+//     if (!authHeader?.startsWith('Bearer ')) {
+//       return res.status(401).send({ message: 'Unauthorized' })
+//     }
+//     const token = authHeader.split(' ')[1]
+//     const decodedToken = await admin.auth().verifyIdToken(token)
+//     req.user = decodedToken
+//     next()
+//   } catch (err) {
+//     console.error(err)
+//     res.status(401).send({ message: 'Invalid or expired token' })
+//   }
+// }
+
+// // --- UPDATED: Use req.user.email for role verification ---
 // async function run() {
 //   try {
 //     const db = client.db('booksDB')
@@ -44,22 +62,20 @@
 //     const reviewsCollection = db.collection('reviews')
 
 //     const verifyADMIN = async (req, res, next) => {
-//       const { adminEmail } = req.body
-//       const user = await usersCollection.findOne({ email: adminEmail })
+//       const user = await usersCollection.findOne({ email: req.user.email })
 //       if (user?.role !== 'admin')
 //         return res.status(403).send({ message: 'Admin only' })
 //       next()
 //     }
 
 //     const verifyLIBRARIAN = async (req, res, next) => {
-//       const { email } = req.body
-//       const user = await usersCollection.findOne({ email })
+//       const user = await usersCollection.findOne({ email: req.user.email })
 //       if (user?.role !== 'librarian')
 //         return res.status(403).send({ message: 'Librarian only' })
 //       next()
 //     }
 
-//     app.post('/books', verifyLIBRARIAN, async (req, res) => {
+//     app.post('/books', verifyToken, verifyLIBRARIAN, async (req, res) => {
 //       const book = req.body
 //       book.createdAt = new Date()
 //       const result = await booksCollection.insertOne(book)
@@ -70,15 +86,9 @@
 //       res.send(await booksCollection.find().toArray())
 //     })
 
-//     app.delete('/books/:id', async (req, res) => {
+//     app.delete('/books/:id', verifyToken, verifyADMIN, async (req, res) => {
 //       try {
 //         const { id } = req.params
-//         const { adminEmail } = req.body
-
-//         const adminUser = await usersCollection.findOne({ email: adminEmail })
-//         if (adminUser?.role !== 'admin') {
-//           return res.status(403).send({ message: 'Admin only' })
-//         }
 
 //         await ordersCollection.deleteMany({ bookId: id })
 //         const result = await booksCollection.deleteOne({
@@ -113,7 +123,7 @@
 //       )
 //     })
 
-//     app.patch('/books/update/:id', async (req, res) => {
+//     app.patch('/books/update/:id', verifyToken, verifyLIBRARIAN, async (req, res) => {
 //       const { id } = req.params
 //       const updateData = req.body
 
@@ -134,7 +144,7 @@
 //       }
 //     })
 
-//     app.patch('/books/status/:id', async (req, res) => {
+//     app.patch('/books/status/:id', verifyToken, verifyLIBRARIAN, async (req, res) => {
 //       const { id } = req.params
 //       const { status } = req.body
 
@@ -170,8 +180,9 @@
 //       }
 //     })
 
-//     app.post('/orders', async (req, res) => {
-//       const { customer, bookId, name, price, customerInfo } = req.body
+//     app.post('/orders', verifyToken, async (req, res) => {
+//       const { bookId, name, price, customerInfo } = req.body
+//       const customer = req.user.email
 
 //       if (!customer || !bookId || !name || !price) {
 //         return res.status(400).send({ message: 'Missing required fields' })
@@ -192,10 +203,12 @@
 //       res.send({ ...order, _id: result.insertedId })
 //     })
 
-//     app.patch('/orders/cancel/:id', async (req, res) => {
+//     app.patch('/orders/cancel/:id', verifyToken, async (req, res) => {
 //       const { id } = req.params
+//       const customer = req.user.email
+
 //       const result = await ordersCollection.updateOne(
-//         { _id: new ObjectId(id), status: 'pending' },
+//         { _id: new ObjectId(id), status: 'pending', customer },
 //         { $set: { status: 'cancelled' } }
 //       )
 
@@ -208,7 +221,7 @@
 //       res.send({ success: true })
 //     })
 
-//     app.patch('/orders/status/:id', async (req, res) => {
+//     app.patch('/orders/status/:id', verifyToken, verifyADMIN, async (req, res) => {
 //       const { id } = req.params
 //       const { status } = req.body
 
@@ -234,7 +247,7 @@
 //       }
 //     })
 
-//     app.get('/librarian/orders', verifyLIBRARIAN, async (req, res) => {
+//     app.get('/librarian/orders', verifyToken, verifyLIBRARIAN, async (req, res) => {
 //       try {
 //         const orders = await ordersCollection
 //           .find()
@@ -247,9 +260,9 @@
 //       }
 //     })
 
-//     app.get('/my-orders/:email', async (req, res) => {
+//     app.get('/my-orders/:email', verifyToken, async (req, res) => {
 //       try {
-//         const email = req.params.email
+//         const email = req.user.email
 //         const orders = await ordersCollection
 //           .find({ customer: email })
 //           .sort({ orderDate: -1 })
@@ -261,7 +274,7 @@
 //       }
 //     })
 
-//     app.post('/create-book-checkout-session', async (req, res) => {
+//     app.post('/create-book-checkout-session', verifyToken, async (req, res) => {
 //       const paymentInfo = req.body
 
 //       const session = await stripe.checkout.sessions.create({
@@ -279,7 +292,7 @@
 //             quantity: 1,
 //           },
 //         ],
-//         customer_email: paymentInfo.customer.email,
+//         customer_email: req.user.email,
 //         mode: 'payment',
 //         metadata: {
 //           orderId: paymentInfo.orderId,
@@ -291,7 +304,7 @@
 //       res.send({ url: session.url })
 //     })
 
-//     app.post('/payment-success', async (req, res) => {
+//     app.post('/payment-success', verifyToken, async (req, res) => {
 //       const { sessionId } = req.body
 //       const session = await stripe.checkout.sessions.retrieve(sessionId)
 
@@ -313,15 +326,15 @@
 //       res.send({ success: false })
 //     })
 
-//     app.get('/invoices/:email', async (req, res) => {
-//       const email = req.params.email
+//     app.get('/invoices/:email', verifyToken, async (req, res) => {
+//       const email = req.user.email
 //       const invoices = await ordersCollection
 //         .find({ customer: email, paymentStatus: 'paid' })
 //         .toArray()
 //       res.send(invoices)
 //     })
 
-//     app.post('/user', async (req, res) => {
+//     app.post('/user', verifyToken, async (req, res) => {
 //       const { email, name, uid, photoURL } = req.body
 //       const now = new Date().toISOString()
 
@@ -356,30 +369,21 @@
 //       res.send(result)
 //     })
 
-//     app.get('/user/role/:email', async (req, res) => {
+//     app.get('/user/role/:email', verifyToken, async (req, res) => {
 //       const user = await usersCollection.findOne({ email: req.params.email })
 //       res.send({ role: user?.role })
 //     })
 
-//     app.get('/users', async (req, res) => {
+//     app.get('/users', verifyToken, async (req, res) => {
 //       res.send(await usersCollection.find().toArray())
 //     })
 
-//     app.patch('/update-role', async (req, res) => {
+//     app.patch('/update-role', verifyToken, verifyADMIN, async (req, res) => {
 //       try {
-//         const { adminEmail, email, role } = req.body
+//         const { email, role } = req.body
 
-//         if (!adminEmail || !email || !role) {
+//         if (!email || !role) {
 //           return res.status(400).send({ message: 'Missing required fields' })
-//         }
-
-//         const adminUser = await usersCollection.findOne({ email: adminEmail })
-//         if (!adminUser) {
-//           return res.status(403).send({ message: 'Admin not found' })
-//         }
-
-//         if (adminUser.role !== 'admin') {
-//           return res.status(403).send({ message: 'Admin only' })
 //         }
 
 //         const result = await usersCollection.updateOne(
@@ -400,8 +404,9 @@
 //       }
 //     })
 
-//     app.post('/wishlist/add', async (req, res) => {
-//       const { email, bookId } = req.body
+//     app.post('/wishlist/add', verifyToken, async (req, res) => {
+//       const { bookId } = req.body
+//       const email = req.user.email
 //       const book = await booksCollection.findOne({ _id: new ObjectId(bookId) })
 //       res.send(
 //         await usersCollection.updateOne(
@@ -411,8 +416,9 @@
 //       )
 //     })
 
-//     app.post('/wishlist/remove', async (req, res) => {
-//       const { email, bookId } = req.body
+//     app.post('/wishlist/remove', verifyToken, async (req, res) => {
+//       const { bookId } = req.body
+//       const email = req.user.email
 //       res.send(
 //         await usersCollection.updateOne(
 //           { email },
@@ -421,13 +427,15 @@
 //       )
 //     })
 
-//     app.get('/wishlist/:email', async (req, res) => {
-//       const user = await usersCollection.findOne({ email: req.params.email })
+//     app.get('/wishlist/:email', verifyToken, async (req, res) => {
+//       const email = req.user.email
+//       const user = await usersCollection.findOne({ email })
 //       res.send(user?.wishlist || [])
 //     })
 
-//     app.post('/review', async (req, res) => {
-//       const { email, bookId, rating, review } = req.body
+//     app.post('/review', verifyToken, async (req, res) => {
+//       const { bookId, rating, review } = req.body
+//       const email = req.user.email
 
 //       const order = await ordersCollection.findOne({
 //         bookId,
@@ -510,24 +518,6 @@ const client = new MongoClient(process.env.MONGODB_URI, {
   },
 })
 
-// --- NEW: Middleware to verify Firebase token ---
-const verifyToken = async (req, res, next) => {
-  try {
-    const authHeader = req.headers.authorization
-    if (!authHeader?.startsWith('Bearer ')) {
-      return res.status(401).send({ message: 'Unauthorized' })
-    }
-    const token = authHeader.split(' ')[1]
-    const decodedToken = await admin.auth().verifyIdToken(token)
-    req.user = decodedToken
-    next()
-  } catch (err) {
-    console.error(err)
-    res.status(401).send({ message: 'Invalid or expired token' })
-  }
-}
-
-// --- UPDATED: Use req.user.email for role verification ---
 async function run() {
   try {
     const db = client.db('booksDB')
@@ -537,20 +527,38 @@ async function run() {
     const reviewsCollection = db.collection('reviews')
 
     const verifyADMIN = async (req, res, next) => {
-      const user = await usersCollection.findOne({ email: req.user.email })
+      const { adminEmail } = req.body
+      const user = await usersCollection.findOne({ email: adminEmail })
       if (user?.role !== 'admin')
         return res.status(403).send({ message: 'Admin only' })
       next()
     }
 
+    // const verifyLIBRARIAN = async (req, res, next) => {
+    //   const { email } = req.body
+    //   const user = await usersCollection.findOne({ email })
+    //   if (user?.role !== 'librarian')
+    //     return res.status(403).send({ message: 'Librarian only' })
+    //   next()
+    // }
+
     const verifyLIBRARIAN = async (req, res, next) => {
-      const user = await usersCollection.findOne({ email: req.user.email })
-      if (user?.role !== 'librarian')
+      const email = req.query.email // 👈 get email from query
+
+      if (!email) {
+        return res.status(401).send({ message: 'Unauthorized' })
+      }
+
+      const user = await usersCollection.findOne({ email })
+
+      if (user?.role !== 'librarian') {
         return res.status(403).send({ message: 'Librarian only' })
+      }
+
       next()
     }
 
-    app.post('/books', verifyToken, verifyLIBRARIAN, async (req, res) => {
+    app.post('/books', verifyLIBRARIAN, async (req, res) => {
       const book = req.body
       book.createdAt = new Date()
       const result = await booksCollection.insertOne(book)
@@ -561,9 +569,15 @@ async function run() {
       res.send(await booksCollection.find().toArray())
     })
 
-    app.delete('/books/:id', verifyToken, verifyADMIN, async (req, res) => {
+    app.delete('/books/:id', async (req, res) => {
       try {
         const { id } = req.params
+        const { adminEmail } = req.body
+
+        const adminUser = await usersCollection.findOne({ email: adminEmail })
+        if (adminUser?.role !== 'admin') {
+          return res.status(403).send({ message: 'Admin only' })
+        }
 
         await ordersCollection.deleteMany({ bookId: id })
         const result = await booksCollection.deleteOne({
@@ -598,7 +612,7 @@ async function run() {
       )
     })
 
-    app.patch('/books/update/:id', verifyToken, verifyLIBRARIAN, async (req, res) => {
+    app.patch('/books/update/:id', async (req, res) => {
       const { id } = req.params
       const updateData = req.body
 
@@ -619,7 +633,7 @@ async function run() {
       }
     })
 
-    app.patch('/books/status/:id', verifyToken, verifyLIBRARIAN, async (req, res) => {
+    app.patch('/books/status/:id', async (req, res) => {
       const { id } = req.params
       const { status } = req.body
 
@@ -655,9 +669,8 @@ async function run() {
       }
     })
 
-    app.post('/orders', verifyToken, async (req, res) => {
-      const { bookId, name, price, customerInfo } = req.body
-      const customer = req.user.email
+    app.post('/orders', async (req, res) => {
+      const { customer, bookId, name, price, customerInfo } = req.body
 
       if (!customer || !bookId || !name || !price) {
         return res.status(400).send({ message: 'Missing required fields' })
@@ -678,12 +691,10 @@ async function run() {
       res.send({ ...order, _id: result.insertedId })
     })
 
-    app.patch('/orders/cancel/:id', verifyToken, async (req, res) => {
+    app.patch('/orders/cancel/:id', async (req, res) => {
       const { id } = req.params
-      const customer = req.user.email
-
       const result = await ordersCollection.updateOne(
-        { _id: new ObjectId(id), status: 'pending', customer },
+        { _id: new ObjectId(id), status: 'pending' },
         { $set: { status: 'cancelled' } }
       )
 
@@ -696,7 +707,7 @@ async function run() {
       res.send({ success: true })
     })
 
-    app.patch('/orders/status/:id', verifyToken, verifyADMIN, async (req, res) => {
+    app.patch('/orders/status/:id', async (req, res) => {
       const { id } = req.params
       const { status } = req.body
 
@@ -722,7 +733,7 @@ async function run() {
       }
     })
 
-    app.get('/librarian/orders', verifyToken, verifyLIBRARIAN, async (req, res) => {
+    app.get('/librarian/orders', verifyLIBRARIAN, async (req, res) => {
       try {
         const orders = await ordersCollection
           .find()
@@ -735,9 +746,9 @@ async function run() {
       }
     })
 
-    app.get('/my-orders/:email', verifyToken, async (req, res) => {
+    app.get('/my-orders/:email', async (req, res) => {
       try {
-        const email = req.user.email
+        const email = req.params.email
         const orders = await ordersCollection
           .find({ customer: email })
           .sort({ orderDate: -1 })
@@ -749,7 +760,7 @@ async function run() {
       }
     })
 
-    app.post('/create-book-checkout-session', verifyToken, async (req, res) => {
+    app.post('/create-book-checkout-session', async (req, res) => {
       const paymentInfo = req.body
 
       const session = await stripe.checkout.sessions.create({
@@ -767,7 +778,7 @@ async function run() {
             quantity: 1,
           },
         ],
-        customer_email: req.user.email,
+        customer_email: paymentInfo.customer.email,
         mode: 'payment',
         metadata: {
           orderId: paymentInfo.orderId,
@@ -779,7 +790,7 @@ async function run() {
       res.send({ url: session.url })
     })
 
-    app.post('/payment-success', verifyToken, async (req, res) => {
+    app.post('/payment-success', async (req, res) => {
       const { sessionId } = req.body
       const session = await stripe.checkout.sessions.retrieve(sessionId)
 
@@ -801,15 +812,15 @@ async function run() {
       res.send({ success: false })
     })
 
-    app.get('/invoices/:email', verifyToken, async (req, res) => {
-      const email = req.user.email
+    app.get('/invoices/:email', async (req, res) => {
+      const email = req.params.email
       const invoices = await ordersCollection
         .find({ customer: email, paymentStatus: 'paid' })
         .toArray()
       res.send(invoices)
     })
 
-    app.post('/user', verifyToken, async (req, res) => {
+    app.post('/user', async (req, res) => {
       const { email, name, uid, photoURL } = req.body
       const now = new Date().toISOString()
 
@@ -844,21 +855,30 @@ async function run() {
       res.send(result)
     })
 
-    app.get('/user/role/:email', verifyToken, async (req, res) => {
+    app.get('/user/role/:email', async (req, res) => {
       const user = await usersCollection.findOne({ email: req.params.email })
       res.send({ role: user?.role })
     })
 
-    app.get('/users', verifyToken, async (req, res) => {
+    app.get('/users', async (req, res) => {
       res.send(await usersCollection.find().toArray())
     })
 
-    app.patch('/update-role', verifyToken, verifyADMIN, async (req, res) => {
+    app.patch('/update-role', async (req, res) => {
       try {
-        const { email, role } = req.body
+        const { adminEmail, email, role } = req.body
 
-        if (!email || !role) {
+        if (!adminEmail || !email || !role) {
           return res.status(400).send({ message: 'Missing required fields' })
+        }
+
+        const adminUser = await usersCollection.findOne({ email: adminEmail })
+        if (!adminUser) {
+          return res.status(403).send({ message: 'Admin not found' })
+        }
+
+        if (adminUser.role !== 'admin') {
+          return res.status(403).send({ message: 'Admin only' })
         }
 
         const result = await usersCollection.updateOne(
@@ -879,9 +899,8 @@ async function run() {
       }
     })
 
-    app.post('/wishlist/add', verifyToken, async (req, res) => {
-      const { bookId } = req.body
-      const email = req.user.email
+    app.post('/wishlist/add', async (req, res) => {
+      const { email, bookId } = req.body
       const book = await booksCollection.findOne({ _id: new ObjectId(bookId) })
       res.send(
         await usersCollection.updateOne(
@@ -891,9 +910,8 @@ async function run() {
       )
     })
 
-    app.post('/wishlist/remove', verifyToken, async (req, res) => {
-      const { bookId } = req.body
-      const email = req.user.email
+    app.post('/wishlist/remove', async (req, res) => {
+      const { email, bookId } = req.body
       res.send(
         await usersCollection.updateOne(
           { email },
@@ -902,15 +920,13 @@ async function run() {
       )
     })
 
-    app.get('/wishlist/:email', verifyToken, async (req, res) => {
-      const email = req.user.email
-      const user = await usersCollection.findOne({ email })
+    app.get('/wishlist/:email', async (req, res) => {
+      const user = await usersCollection.findOne({ email: req.params.email })
       res.send(user?.wishlist || [])
     })
 
-    app.post('/review', verifyToken, async (req, res) => {
-      const { bookId, rating, review } = req.body
-      const email = req.user.email
+    app.post('/review', async (req, res) => {
+      const { email, bookId, rating, review } = req.body
 
       const order = await ordersCollection.findOne({
         bookId,
