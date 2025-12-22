@@ -809,7 +809,7 @@ async function run() {
       res.send(invoices)
     })
 
-    app.post('/user', async (req, res) => {
+    app.post('/user', verifyToken, async (req, res) => {
       const { email, name, uid, photoURL } = req.body
       const now = new Date().toISOString()
 
@@ -844,12 +844,12 @@ async function run() {
       res.send(result)
     })
 
-    app.get('/user/role/:email', async (req, res) => {
+    app.get('/user/role/:email', verifyToken, async (req, res) => {
       const user = await usersCollection.findOne({ email: req.params.email })
       res.send({ role: user?.role })
     })
 
-    app.get('/users', async (req, res) => {
+    app.get('/users', verifyToken, async (req, res) => {
       res.send(await usersCollection.find().toArray())
     })
 
