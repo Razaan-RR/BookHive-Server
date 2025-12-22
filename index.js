@@ -87,6 +87,17 @@ async function run() {
       )
     })
 
+    app.get('/books/librarian/:email', async (req, res) => {
+      try {
+        const email = req.params.email
+        const books = await booksCollection.find({ email }).toArray()
+        res.send(books)
+      } catch (err) {
+        console.error(err)
+        res.status(500).send({ message: 'Failed to fetch librarian books' })
+      }
+    })
+
     app.post('/orders', async (req, res) => {
       const { customer, bookId, name, price, customerInfo } = req.body
 
@@ -125,20 +136,20 @@ async function run() {
       res.send({ success: true })
     })
 
-    app.get('/my-orders/:email', async (req, res) => {
-      res.send(
-        await ordersCollection.find({ customer: req.params.email }).toArray()
-      )
-    })
+    // app.get('/my-orders/:email', async (req, res) => {
+    //   res.send(
+    //     await ordersCollection.find({ customer: req.params.email }).toArray()
+    //   )
+    // })
 
-    app.get('/librarian/orders', async (req, res) => {
-      const orders = await ordersCollection
-        .find()
-        .sort({ orderDate: -1 })
-        .toArray()
+    // app.get('/librarian/orders', async (req, res) => {
+    //   const orders = await ordersCollection
+    //     .find()
+    //     .sort({ orderDate: -1 })
+    //     .toArray()
 
-      res.send(orders)
-    })
+    //   res.send(orders)
+    // })
 
     app.patch('/orders/status/:id', async (req, res) => {
       const { id } = req.params
