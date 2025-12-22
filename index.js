@@ -87,6 +87,52 @@ async function run() {
       )
     })
 
+    app.patch('/books/update/:id', async (req, res) => {
+      const { id } = req.params
+      const updateData = req.body
+
+      try {
+        const result = await booksCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: updateData }
+        )
+
+        if (result.modifiedCount === 0) {
+          return res.status(404).send({ message: 'Book not updated' })
+        }
+
+        res.send({ success: true })
+      } catch (err) {
+        console.error(err)
+        res.status(500).send({ message: 'Failed to update book' })
+      }
+    })
+
+    app.patch('/books/status/:id', async (req, res) => {
+      const { id } = req.params
+      const { status } = req.body
+
+      if (!status) {
+        return res.status(400).send({ message: 'Status required' })
+      }
+
+      try {
+        const result = await booksCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { status } }
+        )
+
+        if (result.modifiedCount === 0) {
+          return res.status(404).send({ message: 'Status not changed' })
+        }
+
+        res.send({ success: true, status })
+      } catch (err) {
+        console.error(err)
+        res.status(500).send({ message: 'Failed to update status' })
+      }
+    })
+
     app.get('/books/librarian/:email', async (req, res) => {
       try {
         const email = req.params.email
@@ -135,21 +181,6 @@ async function run() {
 
       res.send({ success: true })
     })
-
-    // app.get('/my-orders/:email', async (req, res) => {
-    //   res.send(
-    //     await ordersCollection.find({ customer: req.params.email }).toArray()
-    //   )
-    // })
-
-    // app.get('/librarian/orders', async (req, res) => {
-    //   const orders = await ordersCollection
-    //     .find()
-    //     .sort({ orderDate: -1 })
-    //     .toArray()
-
-    //   res.send(orders)
-    // })
 
     app.patch('/orders/status/:id', async (req, res) => {
       const { id } = req.params
